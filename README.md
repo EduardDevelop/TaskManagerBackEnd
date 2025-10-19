@@ -98,3 +98,4 @@ Se ha implementado una política de **Bloqueo de Eliminación** (Preventive Bloc
 * **Razón:** Para mantener la **integridad de los datos** y la coherencia del sistema de progreso. Si se permitiera una *eliminación en cascada* (`Cascade Delete`), se podrían perder subtareas accidentalmente, lo cual es perjudicial para la colaboración.
 * **Comportamiento:** Si un usuario intenta eliminar una tarea padre que contiene subtareas, el endpoint responde con un código **400 Bad Request** (o 409 Conflict), obligando al usuario a eliminar o reasignar las subtareas primero.
 
+# TaskManagerBackEnd
