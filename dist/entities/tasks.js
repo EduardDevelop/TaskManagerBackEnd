@@ -8,13 +8,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 import { Entity, Column, PrimaryGeneratedColumn, BaseEntity, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Check, } from "typeorm";
+import { User } from "./user.js";
 let Task = class Task extends BaseEntity {
     id;
     title;
     description;
     status;
-    user;
+    // 👇 Relación correcta con User
     assigneeId;
+    user;
+    // 👇 Relación jerárquica con tareas
     parent;
     parentId;
     subtasks;
@@ -48,15 +51,17 @@ __decorate([
     __metadata("design:type", String)
 ], Task.prototype, "status", void 0);
 __decorate([
-    ManyToOne("User", "tasks"),
-    __metadata("design:type", Object)
-], Task.prototype, "user", void 0);
-__decorate([
     Column("int", { nullable: true }),
     __metadata("design:type", Object)
 ], Task.prototype, "assigneeId", void 0);
 __decorate([
-    ManyToOne("Task", "subtasks", {
+    ManyToOne(() => User, (user) => user.tasks, { nullable: true }),
+    JoinColumn({ name: "assigneeId" }) // 👈 aquí la clave para que TypeORM entienda la FK
+    ,
+    __metadata("design:type", Object)
+], Task.prototype, "user", void 0);
+__decorate([
+    ManyToOne(() => Task, (task) => task.subtasks, {
         nullable: true,
         onDelete: "CASCADE",
     }),
@@ -68,7 +73,7 @@ __decorate([
     __metadata("design:type", Object)
 ], Task.prototype, "parentId", void 0);
 __decorate([
-    OneToMany("Task", "parent"),
+    OneToMany(() => Task, (task) => task.parent),
     __metadata("design:type", Array)
 ], Task.prototype, "subtasks", void 0);
 __decorate([

@@ -30,6 +30,7 @@ export const getTasks = async (req, res) => {
             order: { id: "ASC" },
             skip,
             take: limit,
+            relations: ["user"],
         });
         let data = [];
         if (include && parents.length) {
@@ -37,6 +38,7 @@ export const getTasks = async (req, res) => {
             const children = await repo.find({
                 where: parentIds.map((pid) => ({ parentId: pid })),
                 order: { id: "ASC" },
+                relations: ["user"],
             });
             const childMap = new Map();
             for (const c of children) {
@@ -47,13 +49,35 @@ export const getTasks = async (req, res) => {
             for (const p of parents) {
                 const childrenForParent = childMap.get(p.id) || [];
                 const progress = await computeProgressForTask(p.id);
-                data.push({ ...p, children: childrenForParent, progress });
+                const formattedParent = {
+                    ...p,
+                    assigneeName: p.user
+                        ? `${p.user.firstname} ${p.user.lastname}`
+                        : null,
+                };
+                const formattedChildren = childrenForParent.map((c) => ({
+                    ...c,
+                    assigneeName: c.user
+                        ? `${c.user.firstname} ${c.user.lastname}`
+                        : null,
+                }));
+                data.push({
+                    ...formattedParent,
+                    children: formattedChildren,
+                    progress,
+                });
             }
         }
         else {
             for (const p of parents) {
                 const progress = await computeProgressForTask(p.id);
-                data.push({ ...p, progress });
+                data.push({
+                    ...p,
+                    assigneeName: p.user
+                        ? `${p.user.firstname} ${p.user.lastname}`
+                        : null,
+                    progress,
+                });
             }
         }
         return res.json({
