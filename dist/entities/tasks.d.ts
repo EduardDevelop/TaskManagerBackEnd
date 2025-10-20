@@ -1,17 +1,15 @@
 import { BaseEntity } from "typeorm";
-import type { User as UserType } from "./user.js";
-import type { Task as TaskType } from "./tasks.js";
 export type TaskStatus = "TO_DO" | "IN_PROGRESS" | "COMPLETED";
 export declare class Task extends BaseEntity {
     id: number;
     title: string;
     description: string;
     status: TaskStatus;
-    assignee: UserType;
+    user: any;
     assigneeId: number | null;
-    parent: TaskType;
+    parent: Task | null;
     parentId: number | null;
-    subtasks: TaskType[];
+    subtasks: Task[];
     createdAt: Date;
     updatedAt: Date;
     isParent(): boolean;

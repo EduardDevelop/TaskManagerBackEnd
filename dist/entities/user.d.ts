@@ -1,11 +1,10 @@
 import { BaseEntity } from "typeorm";
-import type { Task as TaskType } from "./tasks.js";
 export declare class User extends BaseEntity {
     id: number;
     firstname: string;
     lastname: string;
     active: boolean;
-    tasks: TaskType[];
+    tasks: any[];
     createdAt: Date;
     updatedAt: Date;
 }

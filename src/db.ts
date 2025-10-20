@@ -1,14 +1,31 @@
+// db.ts
+import "reflect-metadata";
 import { DataSource } from "typeorm";
 import { User } from "./entities/user.js";
 import { Task } from "./entities/tasks.js";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL no está definida. Define la variable de entorno o crea un .env");
+}
+
+
 export const AppDataSource = new DataSource({
-type: 'postgres',
-host: 'localhost',
-username: 'postgres',
-password: '123456',
-port: 5432,
-database: 'taskmanagerDB',
- synchronize: true,
+  type: "postgres",
+  url: databaseUrl,
+
+  extra: {
+    ssl: {
+      rejectUnauthorized: false, 
+    },
+  },
+
+  synchronize: true,
   // logging: true,
-  entities: [User,Task],
-})
+  entities: [User, Task],
+});
+
+export default AppDataSource;

@@ -34,7 +34,7 @@ __decorate([
     __metadata("design:type", Boolean)
 ], User.prototype, "active", void 0);
 __decorate([
-    OneToMany(() => require("./tasks.js").Task, (task) => task.assignee),
+    OneToMany("Task", "user"),
     __metadata("design:type", Array)
 ], User.prototype, "tasks", void 0);
 __decorate([

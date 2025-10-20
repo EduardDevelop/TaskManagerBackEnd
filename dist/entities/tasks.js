@@ -13,13 +13,10 @@ let Task = class Task extends BaseEntity {
     title;
     description;
     status;
-    // Relación con User
-    assignee;
+    user;
     assigneeId;
-    // Relación padre (tarea padre)
     parent;
     parentId;
-    // Relación con subtareas
     subtasks;
     createdAt;
     updatedAt;
@@ -51,15 +48,11 @@ __decorate([
     __metadata("design:type", String)
 ], Task.prototype, "status", void 0);
 __decorate([
-    ManyToOne("User", "tasks", {
-        nullable: true,
-        onDelete: "SET NULL",
-    }),
-    JoinColumn({ name: "assigneeId" }),
-    __metadata("design:type", Function)
-], Task.prototype, "assignee", void 0);
+    ManyToOne("User", "tasks"),
+    __metadata("design:type", Object)
+], Task.prototype, "user", void 0);
 __decorate([
-    Column({ nullable: true }),
+    Column("int", { nullable: true }),
     __metadata("design:type", Object)
 ], Task.prototype, "assigneeId", void 0);
 __decorate([
@@ -68,10 +61,10 @@ __decorate([
         onDelete: "CASCADE",
     }),
     JoinColumn({ name: "parentId" }),
-    __metadata("design:type", Function)
+    __metadata("design:type", Object)
 ], Task.prototype, "parent", void 0);
 __decorate([
-    Column({ nullable: true }),
+    Column("int", { nullable: true }),
     __metadata("design:type", Object)
 ], Task.prototype, "parentId", void 0);
 __decorate([
