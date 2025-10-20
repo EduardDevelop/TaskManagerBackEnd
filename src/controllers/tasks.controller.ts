@@ -37,23 +37,24 @@ export const getTasks = async (req: Request, res: Response) => {
     if (status) where.status = status;
     if (assignee) where.assigneeId = assignee;
 
+
     const [parents, total] = await repo.findAndCount({
       where,
       order: { id: "ASC" },
       skip,
       take: limit,
+      relations: ["user"], 
     });
 
     let data: any[] = [];
 
     if (include && parents.length) {
-
       const parentIds = parents.map((p) => p.id);
       const children = await repo.find({
         where: parentIds.map((pid) => ({ parentId: pid })),
         order: { id: "ASC" },
+        relations: ["user"], 
       });
-
 
       const childMap = new Map<number, Task[]>();
       for (const c of children) {
@@ -62,17 +63,41 @@ export const getTasks = async (req: Request, res: Response) => {
         childMap.set(c.parentId!, arr);
       }
 
-
       for (const p of parents) {
         const childrenForParent = childMap.get(p.id) || [];
         const progress = await computeProgressForTask(p.id);
-        data.push({ ...p, children: childrenForParent, progress });
+
+    
+        const formattedParent = {
+          ...p,
+          assigneeName: p.user
+            ? `${p.user.firstname} ${p.user.lastname}`
+            : null,
+        };
+
+        const formattedChildren = childrenForParent.map((c) => ({
+          ...c,
+          assigneeName: c.user
+            ? `${c.user.firstname} ${c.user.lastname}`
+            : null,
+        }));
+
+        data.push({
+          ...formattedParent,
+          children: formattedChildren,
+          progress,
+        });
       }
     } else {
-  
       for (const p of parents) {
         const progress = await computeProgressForTask(p.id);
-        data.push({ ...p, progress });
+        data.push({
+          ...p,
+          assigneeName: p.user
+            ? `${p.user.firstname} ${p.user.lastname}`
+            : null,
+          progress,
+        });
       }
     }
 
@@ -85,6 +110,7 @@ export const getTasks = async (req: Request, res: Response) => {
     return res.status(500).json({ message: (error as Error).message });
   }
 };
+
 
 export const getTask = async (req: Request, res: Response) => {
   try {

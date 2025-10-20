@@ -10,6 +10,7 @@ import {
   JoinColumn,
   Check,
 } from "typeorm";
+import { User } from "./user.js";
 
 export type TaskStatus = "TO_DO" | "IN_PROGRESS" | "COMPLETED";
 
@@ -32,13 +33,16 @@ export class Task extends BaseEntity {
   })
   status: TaskStatus;
 
-  @ManyToOne("User", "tasks")
-  user: any;
+  // 👇 Relación correcta con User
+  @Column("int", { nullable: true })
+  assigneeId: number | null;
 
-@Column("int", { nullable: true })
-assigneeId: number | null;
+  @ManyToOne(() => User, (user) => user.tasks, { nullable: true })
+  @JoinColumn({ name: "assigneeId" }) // 👈 aquí la clave para que TypeORM entienda la FK
+  user: User | null;
 
-  @ManyToOne("Task", "subtasks", {
+  // 👇 Relación jerárquica con tareas
+  @ManyToOne(() => Task, (task) => task.subtasks, {
     nullable: true,
     onDelete: "CASCADE",
   })
@@ -48,7 +52,7 @@ assigneeId: number | null;
   @Column("int", { nullable: true })
   parentId: number | null;
 
-  @OneToMany("Task", "parent")
+  @OneToMany(() => Task, (task) => task.parent)
   subtasks: Task[];
 
   @CreateDateColumn()
@@ -60,6 +64,7 @@ assigneeId: number | null;
   isParent(): boolean {
     return this.parentId === null;
   }
+
   isSubtask(): boolean {
     return this.parentId !== null;
   }
