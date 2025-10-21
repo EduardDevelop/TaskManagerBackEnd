@@ -1,296 +1,104 @@
-import type { Request, Response } from "express";
+// controllers/taskController.js
 import { AppDataSource } from "../db.js";
 import { Task } from "../entities/tasks.js";
 import { User } from "../entities/user.js";
-import { getIO } from "../sockets/sockets.js";
-type TaskStatus = "TO_DO" | "IN_PROGRESS" | "COMPLETED";
+import { AppError } from "../utils/error.js";
 
-interface TaskBody {
-  title?: string;
-  description?: string;
-  status?: TaskStatus;
-  assigneeId?: number | null;
-  parentId?: number | null;
-}
-
-async function computeProgressForTask(taskId: number) {
-  const repo = AppDataSource.getRepository(Task);
-  const total = await repo.count({ where: { parentId: taskId } });
-  if (total === 0) return { completed: 0, total: 0, percent: 0 };
-  const completed = await repo.count({ where: { parentId: taskId, status: "COMPLETED" } });
-  const percent = Math.round((completed / total) * 100);
-  return { completed, total, percent };
-}
-
-export const getTasks = async (req: Request, res: Response) => {
+export const getTasks = async (req:any, res:any, next:any) => {
   try {
-    const repo = AppDataSource.getRepository(Task);
+    const { include, page = 1, limit = 100 } = req.query;
+    const taskRepo = AppDataSource.getRepository(Task);
 
-    const include = req.query.include === "subtasks";
-    const status = (req.query.status as string) || undefined;
-    const assignee = req.query.assignee ? Number(req.query.assignee) : undefined;
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Number(req.query.limit) || 20);
-    const skip = (page - 1) * limit;
-
-    const where: any = { parentId: null as any };
-    if (status) where.status = status;
-    if (assignee) where.assigneeId = assignee;
-
-
-    const [parents, total] = await repo.findAndCount({
-      where,
-      order: { id: "ASC" },
-      skip,
-      take: limit,
-      relations: ["user"], 
+    const tasks = await taskRepo.find({
+      relations: include === "subtasks" ? ["children", "user"] : ["user"],
+      skip: (page - 1) * limit,
+      take: parseInt(limit),
     });
 
-    let data: any[] = [];
-
-    if (include && parents.length) {
-      const parentIds = parents.map((p) => p.id);
-      const children = await repo.find({
-        where: parentIds.map((pid) => ({ parentId: pid })),
-        order: { id: "ASC" },
-        relations: ["user"], 
-      });
-
-      const childMap = new Map<number, Task[]>();
-      for (const c of children) {
-        const arr = childMap.get(c.parentId!) || [];
-        arr.push(c);
-        childMap.set(c.parentId!, arr);
-      }
-
-      for (const p of parents) {
-        const childrenForParent = childMap.get(p.id) || [];
-        const progress = await computeProgressForTask(p.id);
-
-    
-        const formattedParent = {
-          ...p,
-          assigneeName: p.user
-            ? `${p.user.firstname} ${p.user.lastname}`
-            : null,
-        };
-
-        const formattedChildren = childrenForParent.map((c) => ({
-          ...c,
-          assigneeName: c.user
-            ? `${c.user.firstname} ${c.user.lastname}`
-            : null,
-        }));
-
-        data.push({
-          ...formattedParent,
-          children: formattedChildren,
-          progress,
-        });
-      }
-    } else {
-      for (const p of parents) {
-        const progress = await computeProgressForTask(p.id);
-        data.push({
-          ...p,
-          assigneeName: p.user
-            ? `${p.user.firstname} ${p.user.lastname}`
-            : null,
-          progress,
-        });
-      }
-    }
-
-    return res.json({
-      data,
-      meta: { page, limit, total },
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: (error as Error).message });
+    res.json({ data: tasks });
+  } catch (err) {
+    next(new AppError("Error fetching tasks", 500));
   }
 };
 
-
-export const getTask = async (req: Request, res: Response) => {
+export const createTask = async (req:any, res:any, next:any) => {
   try {
-    const id = Number(req.params.id);
-    const repo = AppDataSource.getRepository(Task);
-    const task = await repo.findOneBy({ id });
+    const { title, description, status, assigneeId, parentId } = req.body;
+    if (!title || title.trim().length < 3) {
+      throw new AppError("Title must be at least 3 characters long", 400);
+    }
 
-    if (!task) return res.status(404).json({ message: "Task not found" });
+    const taskRepo = AppDataSource.getRepository(Task);
+    const userRepo = AppDataSource.getRepository(User);
 
+    let assignee = null;
+    if (assigneeId) {
+      assignee = await userRepo.findOneBy({ id: assigneeId });
+      if (!assignee) throw new AppError("Assignee not found", 404);
+    }
 
-    const children = await repo.find({ where: { parentId: id }, order: { id: "ASC" } });
-    const progress = await computeProgressForTask(id);
+    let parent = null;
+    if (parentId) {
+      parent = await taskRepo.findOneBy({ id: parentId });
+      if (!parent) throw new AppError("Parent task not found", 404);
+    }
 
-    return res.json({ task, children, progress });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: (error as Error).message });
+    const task = taskRepo.create({
+      title: title.trim(),
+      description,
+      status,
+      user: assignee,
+      parent,
+    });
+
+    const saved = await taskRepo.save(task);
+    res.status(201).json(saved);
+  } catch (err) {
+    next(err);
   }
 };
 
-
-export const createTask = async (req: Request<unknown, unknown, TaskBody>, res: Response) => {
-  const { title, description, status = "TO_DO", assigneeId = null, parentId = null } = req.body;
-
-  if (!title || typeof title !== "string" || title.trim().length < 3) {
-    return res.status(400).json({ message: "Title is required and must have at least 3 characters" });
-  }
-
-  const ALLOWED_STATUS = ["TO_DO", "IN_PROGRESS", "COMPLETED"];
-  if (!ALLOWED_STATUS.includes(status)) {
-    return res.status(400).json({ message: "Invalid status value" });
-  }
-
-  const repo = AppDataSource.getRepository(Task);
-  const userRepo = AppDataSource.getRepository(User);
-
+export const updateTask = async (req:any, res:any, next:any) => {
   try {
-    if (parentId !== null && parentId !== undefined) {
-      const parent = await repo.findOneBy({ id: parentId });
-      if (!parent) {
-        return res.status(400).json({ message: "Parent task not found" });
-      }
-      if (parent.parentId !== null) {
-        return res.status(400).json({ message: "Parent must be a top-level task" });
-      }
-    }
+    const id = parseInt(req.params.id);
+    const { title, description, status, assigneeId } = req.body;
+    const taskRepo = AppDataSource.getRepository(Task);
 
-    if (assigneeId !== null && assigneeId !== undefined) {
+    const task = await taskRepo.findOne({ where: { id }, relations: ["user"] });
+    if (!task) throw new AppError("Task not found", 404);
+
+    if (title && title.trim().length < 3)
+      throw new AppError("Title must be at least 3 characters long", 400);
+
+    if (assigneeId) {
+      const userRepo = AppDataSource.getRepository(User);
       const assignee = await userRepo.findOneBy({ id: assigneeId });
-      if (!assignee) {
-        return res.status(400).json({ message: "Assignee user not found" });
-      }
+      if (!assignee) throw new AppError("Assignee not found", 404);
+      task.user = assignee;
     }
 
+    task.title = title ?? task.title;
+    task.description = description ?? task.description;
+    task.status = status ?? task.status;
 
-    const task = new Task();
-    task.title = title.trim();
-    task.description = description! ?? null;
-    task.status = status;
-    task.assigneeId = assigneeId ?? null;
-    task.parentId = parentId ?? null;
-
-    const savedTask = await repo.save(task);
-
-    const io = getIO();
-    if (io) io.emit("task:created", { task: savedTask });
-
-    return res.status(201).json({ task: savedTask });
-  } catch (error) {
-    console.error("Error creating task:", error);
-    return res.status(500).json({ message: (error as Error).message });
+    const updated = await taskRepo.save(task);
+    res.json(updated);
+  } catch (err) {
+    next(err);
   }
 };
 
-export const updateTask = async (req: Request<{ id: string }, unknown, TaskBody>, res: Response) => {
-  const { id } = req.params;
-  const taskId = parseInt(id, 10); 
-  const updates = req.body;
-
-  const repo = AppDataSource.getRepository(Task);
-  const userRepo = AppDataSource.getRepository(User);
-
+export const deleteTask = async (req:any, res:any, next:any) => {
   try {
-    const task = await repo.findOneBy({ id: taskId });
-    if (!task) {
-      return res.status(404).json({ message: "Task not found" });
-    }
+    const id = parseInt(req.params.id);
+    const taskRepo = AppDataSource.getRepository(Task);
 
-    const ALLOWED_STATUS = ["TO_DO", "IN_PROGRESS", "COMPLETED"];
-    if (updates.status && !ALLOWED_STATUS.includes(updates.status)) {
-      return res.status(400).json({ message: "Invalid status value" });
-    }
+    const task = await taskRepo.findOneBy({ id });
+    if (!task) throw new AppError("Task not found", 404);
 
-    if (updates.title && (typeof updates.title !== "string" || updates.title.trim().length < 3)) {
-      return res.status(400).json({ message: "Title must have at least 3 characters" });
-    }
-
-    if (updates.assigneeId !== undefined && updates.assigneeId !== null) {
-      const assignee = await userRepo.findOneBy({ id: updates.assigneeId });
-      if (!assignee) {
-        return res.status(400).json({ message: "Assignee user not found" });
-      }
-    }
-
-    if (updates.parentId !== undefined) {
-      if (updates.parentId === taskId) {
-        return res.status(400).json({ message: "Task cannot be its own parent" });
-      }
-
-      if (updates.parentId !== null) {
-        const parent = await repo.findOneBy({ id: updates.parentId });
-        if (!parent) {
-          return res.status(400).json({ message: "Parent task not found" });
-        }
-        if (parent.parentId !== null) {
-          return res.status(400).json({ message: "Parent must be a top-level task" });
-        }
-      }
-    }
-
-    if (updates.status === "COMPLETED") {
-      const subtasks = await repo.findBy({ parentId: taskId });
-      const incompleteSubs = subtasks.filter((s) => s.status !== "COMPLETED");
-      if (incompleteSubs.length > 0) {
-        return res.status(400).json({ message: "Cannot complete task with incomplete subtasks" });
-      }
-    }
-
-    await AppDataSource.transaction(async (manager) => {
-      if (updates.title !== undefined) task.title = updates.title.trim();
-      if (updates.description !== undefined) task.description = updates.description;
-      if (updates.status !== undefined) task.status = updates.status;
-      if (updates.assigneeId !== undefined) task.assigneeId = updates.assigneeId;
-      if (updates.parentId !== undefined) task.parentId = updates.parentId;
-
-      await manager.save(task);
-    });
-
-    const io = getIO();
-    if (io) io.emit("task:updated", { id: task.id, task });
-
-    return res.status(200).json({ task });
-  } catch (error) {
-    console.error("Error updating task:", error);
-    return res.status(500).json({ message: (error as Error).message });
-  }
-};
-
-
-
-export const deleteTask = async (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  const force = req.query.force === "true";
-
-  const repo = AppDataSource.getRepository(Task);
-
-  try {
-    const task = await repo.findOneBy({ id });
-    if (!task) return res.status(404).json({ message: "Task not found" });
-
-    const childCount = await repo.count({ where: { parentId: id } });
-
-    if (childCount > 0 && !force) {
-      return res.status(400).json({ message: "Task has subtasks. Use ?force=true to delete cascade" });
-    }
-
-
-    await AppDataSource.manager.transaction(async (manager) => {
-      if (childCount > 0) {
-        await manager.delete(Task, { parentId: id } as any);
-      }
-      await manager.delete(Task, { id } as any);
-    });
-
-    const io = getIO();
-    if (io) io.emit("task:deleted", { id });
-
-    return res.sendStatus(204);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: (error as Error).message });
+    await taskRepo.remove(task);
+    res.json({ message: "Task deleted successfully" });
+  } catch (err) {
+    next(err);
   }
 };
