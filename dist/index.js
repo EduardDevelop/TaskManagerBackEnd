@@ -1,20 +1,11 @@
-import app from "./app.js";
-import http from "http";
-import { AppDataSource } from "./db.js";
-import { initSocket } from "./sockets/sockets.js";
-async function main() {
-    try {
+import app from "../src/app.js";
+import { AppDataSource } from "../src/db.js";
+let initialized = false;
+export default async function handler(req, res) {
+    if (!initialized) {
         await AppDataSource.initialize();
-        const server = http.createServer(app);
-        initSocket(server);
-        const PORT = process.env.PORT || 3000;
-        server.listen(PORT, () => {
-            console.log("Server on port", PORT);
-        });
+        initialized = true;
     }
-    catch (error) {
-        console.error(error);
-    }
+    app(req, res); // delega a Express
 }
-main();
 //# sourceMappingURL=index.js.map

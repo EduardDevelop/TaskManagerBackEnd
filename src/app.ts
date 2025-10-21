@@ -6,14 +6,16 @@ import tasksRoutes from "./routers/tasks.routes.js";
 
 const app = express();
 
-
 const allowedOrigins = [
-  "https://taskmanager-frontend-l9ch1g2el-edward-numpaques-projects.vercel.app", 
-  "http://localhost:3000", 
+  "https://taskmanagerfrontend-4c3j.onrender.com",
+  "https://www.taskmanagerfrontend-4c3j.onrender.com",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ];
 
 const corsOptions = {
-  origin: function (origin:any, callback:any) {
+  origin: function (origin, callback) {
+    console.log("CORS origin incoming:", origin);
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -23,14 +25,23 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
 };
 
 app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(morgan("dev"));
 app.use(express.json());
 
-// Rutas
 app.use("/api", userRoutes);
 app.use("/api", tasksRoutes);
 
