@@ -1,1 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
 .vercel
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

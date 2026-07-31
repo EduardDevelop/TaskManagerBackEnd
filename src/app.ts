@@ -1,48 +1,39 @@
-import express from "express";
-import morgan from "morgan";
 import cors from "cors";
-import userRoutes from "./routers/users.routes.js";
-import tasksRoutes from "./routers/tasks.routes.js";
+import express from "express";
+import type { Express } from "express";
+import helmet from "helmet";
+import { loadConfig, type AppConfig } from "./config/env.js";
+import { registerSwagger } from "./config/swagger.js";
+import { openDatabase } from "./infrastructure/database/sqlite.js";
+import { SqliteTaskRepository } from "./infrastructure/repositories/sqlite-task.repository.js";
+import { TaskService } from "./application/services/task.service.js";
+import { createTaskRouter } from "./presentation/http/routes/task.routes.js";
+import {
+  errorHandler,
+  notFoundMiddleware,
+} from "./presentation/http/middleware/error-handler.middleware.js";
+import { requestIdMiddleware } from "./presentation/http/middleware/request-id.middleware.js";
+import { timeoutMiddleware } from "./presentation/http/middleware/timeout.middleware.js";
 
-const app = express();
+export const createApp = (
+  config: AppConfig = loadConfig(),
+): { app: Express; close: () => void } => {
+  const app = express();
+  const database = openDatabase(config.DATABASE_PATH);
+  const service = new TaskService(new SqliteTaskRepository(database));
 
-const allowedOrigins = [
-  "https://taskmanagerfrontend-4c3j.onrender.com",
-  "https://www.taskmanagerfrontend-4c3j.onrender.com",
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
-];
+  app.use(helmet());
+  app.use(cors({ origin: config.CORS_ORIGIN }));
+  app.use(express.json({ limit: "100kb" }));
+  app.use(requestIdMiddleware);
+  app.use(timeoutMiddleware(config.REQUEST_TIMEOUT_MS));
+  registerSwagger(app);
+  app.use(`${config.API_PREFIX}/tasks`, createTaskRouter(service, config));
+  app.use(notFoundMiddleware);
+  app.use(errorHandler);
 
-const corsOptions = {
-  origin: function (origin:any, callback:any) {
-    console.log("CORS origin incoming:", origin);
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.error(`❌ Bloqueado por CORS: ${origin}`);
-      callback(new Error("No autorizado por CORS"));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+  return { app, close: () => database.close() };
 };
 
-app.use(cors(corsOptions));
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.header("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-app.use(morgan("dev"));
-app.use(express.json());
-
-app.use("/api", userRoutes);
-app.use("/api", tasksRoutes);
-
+const { app } = createApp();
 export default app;

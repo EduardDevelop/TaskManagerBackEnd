@@ -1,104 +1,72 @@
-// controllers/taskController.js
-import { AppDataSource } from "../db.js";
-import { Task } from "../entities/tasks.js";
-import { User } from "../entities/user.js";
-import { AppError } from "../utils/error.js";
+import type { NextFunction, Request, Response } from "express";
+import { AppError } from "../middleware/error.middleware.js";
+import { taskService } from "../services/task.service.js";
 
-export const getTasks = async (req:any, res:any, next:any) => {
+const getIdParam = (req: Request): string => {
+  const { id } = req.params;
+
+  if (!id) {
+    throw new AppError("Task id is required", 400);
+  }
+
+  return id;
+};
+
+export const getTasks = async (_req: Request, res: Response, next: NextFunction) => {
   try {
-    const { include, page = 1, limit = 100 } = req.query;
-    const taskRepo = AppDataSource.getRepository(Task);
-
-    const tasks = await taskRepo.find({
-      relations: include === "subtasks" ? ["children", "user"] : ["user"],
-      skip: (page - 1) * limit,
-      take: parseInt(limit),
-    });
-
-    res.json({ data: tasks });
-  } catch (err) {
-    next(new AppError("Error fetching tasks", 500));
+    res.status(200).json(taskService.getAll());
+  } catch (error) {
+    next(error);
   }
 };
 
-export const createTask = async (req:any, res:any, next:any) => {
+export const getTask = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { title, description, status, assigneeId, parentId } = req.body;
-    if (!title || title.trim().length < 3) {
-      throw new AppError("Title must be at least 3 characters long", 400);
+    const task = taskService.getById(getIdParam(req));
+
+    if (!task) {
+      throw new AppError("Task not found", 404);
     }
 
-    const taskRepo = AppDataSource.getRepository(Task);
-    const userRepo = AppDataSource.getRepository(User);
-
-    let assignee = null;
-    if (assigneeId) {
-      assignee = await userRepo.findOneBy({ id: assigneeId });
-      if (!assignee) throw new AppError("Assignee not found", 404);
-    }
-
-    let parent = null;
-    if (parentId) {
-      parent = await taskRepo.findOneBy({ id: parentId });
-      if (!parent) throw new AppError("Parent task not found", 404);
-    }
-
-    const task = taskRepo.create({
-      title: title.trim(),
-      description,
-      status,
-      user: assignee,
-      parent,
-    });
-
-    const saved = await taskRepo.save(task);
-    res.status(201).json(saved);
-  } catch (err) {
-    next(err);
+    res.status(200).json(task);
+  } catch (error) {
+    next(error);
   }
 };
 
-export const updateTask = async (req:any, res:any, next:any) => {
+export const createTask = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id);
-    const { title, description, status, assigneeId } = req.body;
-    const taskRepo = AppDataSource.getRepository(Task);
-
-    const task = await taskRepo.findOne({ where: { id }, relations: ["user"] });
-    if (!task) throw new AppError("Task not found", 404);
-
-    if (title && title.trim().length < 3)
-      throw new AppError("Title must be at least 3 characters long", 400);
-
-    if (assigneeId) {
-      const userRepo = AppDataSource.getRepository(User);
-      const assignee = await userRepo.findOneBy({ id: assigneeId });
-      if (!assignee) throw new AppError("Assignee not found", 404);
-      task.user = assignee;
-    }
-
-    task.title = title ?? task.title;
-    task.description = description ?? task.description;
-    task.status = status ?? task.status;
-
-    const updated = await taskRepo.save(task);
-    res.json(updated);
-  } catch (err) {
-    next(err);
+    const task = taskService.create(req.body);
+    res.status(201).json(task);
+  } catch (error) {
+    next(error);
   }
 };
 
-export const deleteTask = async (req:any, res:any, next:any) => {
+export const updateTask = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const id = parseInt(req.params.id);
-    const taskRepo = AppDataSource.getRepository(Task);
+    const task = taskService.update(getIdParam(req), req.body);
 
-    const task = await taskRepo.findOneBy({ id });
-    if (!task) throw new AppError("Task not found", 404);
+    if (!task) {
+      throw new AppError("Task not found", 404);
+    }
 
-    await taskRepo.remove(task);
-    res.json({ message: "Task deleted successfully" });
-  } catch (err) {
-    next(err);
+    res.status(200).json(task);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTask = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const deleted = taskService.delete(getIdParam(req));
+
+    if (!deleted) {
+      throw new AppError("Task not found", 404);
+    }
+
+    res.status(200).json({ message: "Task deleted successfully" });
+  } catch (error) {
+    next(error);
   }
 };
